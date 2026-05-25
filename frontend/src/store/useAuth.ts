@@ -26,23 +26,22 @@ const generateUUID = () => {
 };
 
 export const useAuth = create<AuthState>((set) => ({
-  token: typeof window !== "undefined" ? localStorage.getItem("token") : null,
+  // Read an active session existence indicator rather than raw secrets
+  token: typeof window !== "undefined" ? (localStorage.getItem("session_id") ? "secured_cookie" : null) : null,
   user: null,
   sessionId: typeof window !== "undefined" ? localStorage.getItem("session_id") : null,
   setToken: (token) => {
     if (typeof window !== "undefined") {
-      localStorage.setItem("token", token);
       const newSession = generateUUID();
       localStorage.setItem("session_id", newSession);
-      set({ token, sessionId: newSession });
+      set({ token: "secured_cookie", sessionId: newSession });
     } else {
-      set({ token });
+      set({ token: "secured_cookie" });
     }
   },
   setUser: (user) => set({ user }),
   logout: () => {
     if (typeof window !== "undefined") {
-      localStorage.removeItem("token");
       localStorage.removeItem("session_id");
     }
     set({ token: null, user: null, sessionId: null });
@@ -55,3 +54,4 @@ export const useAuth = create<AuthState>((set) => ({
     }
   }
 }));
+

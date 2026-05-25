@@ -30,6 +30,7 @@ export default function Login() {
       const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
       const response = await fetch(`${apiBaseUrl}/auth/login`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: formData.toString()
       });

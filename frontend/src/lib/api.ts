@@ -11,15 +11,11 @@ if (typeof window !== "undefined" && window.location.hostname !== "localhost" &&
 
 
 export async function fetchApi(endpoint: string, options: RequestInit = {}) {
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
   const headers = new Headers(options.headers || {});
-  
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
   
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
+    credentials: "include", // Enforce secure cookie transmission automatically
     headers,
   });
   

@@ -36,10 +36,20 @@ interface ExplorerResponse {
   chart_config: ChartConfig;
 }
 
+import DOMPurify from "dompurify";
+
 export default function NLExplorer({ uploadId }: NLExplorerProps) {
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ExplorerResponse | null>(null);
+
+  const getSanitizedAnswer = (answer: string) => {
+    if (typeof window !== "undefined") {
+      return DOMPurify.sanitize(answer);
+    }
+    return answer;
+  };
+
 
   const handleAsk = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -199,7 +209,7 @@ export default function NLExplorer({ uploadId }: NLExplorerProps) {
                 AI Explorer Answer
               </h4>
               <div className="p-4 rounded-xl border border-violet-500/10 bg-violet-500/5 text-sm text-slate-200 leading-relaxed shadow-lg shadow-violet-950/5">
-                {result.answer}
+                {getSanitizedAnswer(result.answer)}
               </div>
             </div>
 

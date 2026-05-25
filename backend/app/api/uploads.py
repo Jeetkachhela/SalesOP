@@ -120,7 +120,12 @@ async def upload_dataset(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    if file.content_type not in ALLOWED_MIME_TYPES:
+    # 1. Strict File Extension check
+    filename = file.filename or ""
+    if not filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Invalid file extension. Only .csv files are allowed.")
+        
+    if file.content_type not in ALLOWED_MIME_TYPES and file.content_type != "application/octet-stream":
         raise HTTPException(status_code=400, detail="Invalid file type. Only CSV files are allowed.")
     
     # Read file to check size
@@ -131,6 +136,12 @@ async def upload_dataset(
         raise HTTPException(status_code=400, detail="File size exceeds the 50MB limit.")
     if file_size == 0:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+        
+    # 2. Prevent Zip Bombs and Binary Exploit Injections
+    # Check first 1KB for null bytes
+    if b"\x00" in file_bytes[:1024]:
+        raise HTTPException(status_code=400, detail="Invalid file format. Binary files/archives are strictly prohibited.")
+
     
     upload = Upload(
         user_id=current_user.id,

@@ -1,10 +1,20 @@
 import logging
 import json
+import re
+import time
+from typing import Optional
 from groq import Groq
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
-client = Groq(api_key=settings.GROQ_API_KEY)
+
+# Initialize Groq client only if key is configured
+client = None
+if settings.GROQ_API_KEY and settings.GROQ_API_KEY != "YOUR_GROQ_API_KEY_HERE":
+    try:
+        client = Groq(api_key=settings.GROQ_API_KEY)
+    except Exception as e:
+        logger.error(f"Failed to initialize Groq client: {str(e)}")
 
 SYSTEM_PROMPT = """
 ROLE:
@@ -33,19 +43,44 @@ Return your response strictly as valid JSON with the following schema:
 }
 """
 
+def sanitize_user_input(text: str, max_len: int = 500) -> str:
+    """Filters prompt injection keywords and truncates length to prevent DDoS/buffer overflow attacks"""
+    if not text:
+        return ""
+    # 1. Size restriction
+    text = text[:max_len]
+    # 2. Strict prompt injection keyword sanitization (case-insensitive)
+    injection_patterns = [
+        r"(ignore|bypass|override|forget)\s+(all\s+)?(previous\s+)?(instructions|rules|system|prompts)",
+        r"you\s+are\s+now\s+a",
+        r"dan\s+mode",
+        r"developer\s+mode",
+        r"system\s+prompt",
+        r"ignore\s+above"
+    ]
+    for pattern in injection_patterns:
+        text = re.sub(pattern, "[CLEANED_EXPRESSION]", text, flags=re.IGNORECASE)
+    return text
+
 def generate_ai_insights(quality_findings: dict, stat_findings: dict) -> dict:
     """
     Safely constructs a context from validated findings and calls Groq for interpretation.
+    Provides a dynamic deterministic fallback if the API is offline.
     """
     logger.info("Constructing constrained AI prompt...")
     
-    # Context sanitization: Only sending aggregated JSON findings, NO raw data.
+    # 1. Context sanitization: Only sending aggregated JSON findings, NO raw data.
     context_payload = {
         "quality_metrics": quality_findings,
-        "statistical_metrics": stat_findings["metrics"],
-        "anomaly_summaries": stat_findings["anomalies"]
+        "statistical_metrics": stat_findings.get("metrics", {}),
+        "anomaly_summaries": stat_findings.get("anomalies", [])
     }
     
+    # 2. Dynamic Fallback when Groq client is not initialized or missing key
+    if not client:
+        logger.warning("Groq API key is missing or invalid. Utilizing offline deterministic fallback insights.")
+        return _offline_insights_fallback(quality_findings, stat_findings)
+        
     user_prompt = f"Please analyze the following operational findings:\n\n{json.dumps(context_payload, indent=2)}"
     
     try:
@@ -62,15 +97,14 @@ def generate_ai_insights(quality_findings: dict, stat_findings: dict) -> dict:
         
         raw_response = response.choices[0].message.content
         parsed_insights = json.loads(raw_response)
-        
         return parsed_insights
         
     except json.JSONDecodeError:
         logger.error("AI response was not valid JSON.")
-        return {"error": "AI response validation failed."}
+        return _offline_insights_fallback(quality_findings, stat_findings)
     except Exception as e:
-        logger.error(f"AI generation failed: {str(e)}")
-        return {"error": "AI interpretation service unavailable."}
+        logger.error(f"AI generation failed: {str(e)}. Falling back to offline engine.")
+        return _offline_insights_fallback(quality_findings, stat_findings)
 
 def chat_with_insights(question: str, past_chat: list, annotations: list, current_insights: dict) -> str:
     """
@@ -79,6 +113,12 @@ def chat_with_insights(question: str, past_chat: list, annotations: list, curren
     """
     logger.info("Starting conversational follow-up with Groq.")
     
+    # 1. Sanitize user input to prevent prompt injection
+    safe_question = sanitize_user_input(question, max_len=500)
+    
+    if not client:
+        return f"System Response (Offline Mode): I've analyzed your question: '{safe_question}'. Please configure a valid GROQ_API_KEY to activate natural language chat interpretation."
+        
     chat_system_prompt = f"""
 ROLE:
 You are an expert Data Analyst and Operational Intelligence AI.
@@ -101,11 +141,12 @@ RULES:
     
     messages = [{"role": "system", "content": chat_system_prompt}]
     
-    # Add history
-    for msg in past_chat[-10:]: # last 10 messages
-        messages.append({"role": msg["role"], "content": msg["content"]})
+    # Add history (last 10 messages)
+    for msg in past_chat[-10:]:
+        safe_msg_content = sanitize_user_input(msg["content"], max_len=500)
+        messages.append({"role": msg["role"], "content": safe_msg_content})
         
-    messages.append({"role": "user", "content": question})
+    messages.append({"role": "user", "content": safe_question})
     
     try:
         response = client.chat.completions.create(
@@ -118,7 +159,7 @@ RULES:
         
     except Exception as e:
         logger.error(f"AI chat failed: {str(e)}")
-        return "I am currently unavailable to answer questions due to a system error."
+        return "I am currently unavailable to answer questions due to a system connection error."
 
 NL_SYSTEM_PROMPT = """
 ROLE:
@@ -168,6 +209,13 @@ def nl_query_to_chart(
     """
     logger.info("Translating NL query to answer + chart config...")
     
+    # 1. Sanitize user input to prevent prompt injection
+    safe_question = sanitize_user_input(question, max_len=250)
+    
+    if not client:
+        logger.warning("Groq API key is missing. Serving offline natural language mock response.")
+        return _offline_nl_fallback(safe_question, stat_findings)
+        
     context_payload = {
         "quality_metrics": {
             "total_rows": quality_findings.get("total_rows"),
@@ -185,7 +233,7 @@ def nl_query_to_chart(
         }
     }
     
-    user_prompt = f"Question: {question}\n\nDataset Summary Context:\n{json.dumps(context_payload, indent=2)}"
+    user_prompt = f"Question: {safe_question}\n\nDataset Summary Context:\n{json.dumps(context_payload, indent=2)}"
     
     try:
         response = client.chat.completions.create(
@@ -205,13 +253,54 @@ def nl_query_to_chart(
         
     except json.JSONDecodeError:
         logger.error("NL query AI response was not valid JSON.")
-        return {
-            "answer": "I found the answer but encountered an error formatting the chart visualization.",
-            "chart_config": {"type": "none", "x_key": "", "y_keys": [], "data": []}
-        }
+        return _offline_nl_fallback(safe_question, stat_findings)
     except Exception as e:
         logger.error(f"NL query AI failed: {str(e)}")
-        return {
-            "answer": "Sorry, I am currently unable to analyze this question due to an internal system error.",
-            "chart_config": {"type": "none", "x_key": "", "y_keys": [], "data": []}
+        return _offline_nl_fallback(safe_question, stat_findings)
+
+
+def _offline_insights_fallback(quality_findings: dict, stat_findings: dict) -> dict:
+    """Offline backup analyzer that converts parsed findings into standard summary structure"""
+    total_rows = quality_findings.get("total_rows", 0)
+    cols = list(quality_findings.get("columns", {}).keys())
+    trust_score = quality_findings.get("trust_score", {}).get("score", 100)
+    
+    warnings = []
+    for col, data in quality_findings.get("columns", {}).items():
+        if data.get("missing_count", 0) > 0:
+            warnings.append(f"Column '{col}' has {data.get('missing_count')} missing values.")
+            
+    anomalies = [f"Anomaly in row {a.get('row_index')}: {a.get('column')} value {a.get('value')} exceeds Z-score boundary" 
+                 for a in stat_findings.get("anomalies", [])[:5]]
+                 
+    return {
+        "summary": f"Offline data reliability report completed. Dataset contains {total_rows} records and {len(cols)} columns, returning a Data Trust Score™ of {trust_score:.1f}/100.",
+        "insights": [
+            f"The parsed columns are: {', '.join(cols[:5])}.",
+            f"Completeness rating: {quality_findings.get('trust_score', {}).get('breakdown', {}).get('completeness', 1.0)*100:.1f}%.",
+            f"Anomaly-free row index rating: {quality_findings.get('trust_score', {}).get('breakdown', {}).get('anomaly_health', 1.0)*100:.1f}%."
+        ],
+        "anomalies_highlighted": anomalies if anomalies else ["No significant anomalies detected in statistical verification."],
+        "data_quality_warnings": warnings if warnings else ["Zero completeness issues detected. The dataset is fully packed."]
+    }
+
+def _offline_nl_fallback(question: str, stat_findings: dict) -> dict:
+    """Offline natural language explorer fallback that constructs descriptive statistics charts"""
+    metrics = stat_findings.get("metrics", {})
+    data_points = []
+    
+    for col, stats in list(metrics.items())[:5]:
+        data_points.append({
+            "column": col[:10],
+            "average": float(stats.get("mean", 0))
+        })
+        
+    return {
+        "answer": f"Offline Mode: I received your question: '{question}'. Because no Groq API Key was found in the env variables, I have compiled a fallback descriptive average distribution chart of your numeric parameters directly from database statistical findings.",
+        "chart_config": {
+            "type": "bar" if data_points else "none",
+            "x_key": "column",
+            "y_keys": ["average"],
+            "data": data_points
         }
+    }
