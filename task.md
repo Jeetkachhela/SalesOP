@@ -1,0 +1,21 @@
+# Advanced Analytics, Visualizations & USP Tasks
+
+- `[x]` **Phase 1: Advanced Analytics Engine (Backend)**
+  - `[x]` Create `correlation.py` — Pearson correlation matrix
+  - `[x]` Create `distribution.py` — histogram bins, skewness, kurtosis
+  - `[x]` Create `trends.py` — auto datetime detection, trend slope
+  - `[x]` Upgrade `quality.py` with Data Trust Score™ calculation
+  - `[x]` Wire all new modules into `uploads.py` background pipeline
+- `[x]` **Phase 2: Analytics API Endpoints**
+  - `[x]` Create `analytics_api.py` with trust-score, correlations, distributions, trends endpoints
+  - `[x]` Register router in `main.py`
+- `[x]` **Phase 3: Natural Language Data Explorer**
+  - `[x]` Add `nl_query_to_chart()` to `interpreter.py`
+- `[x]` **Phase 4: Frontend Visualizations**
+  - `[x]` Install Recharts (verified in `package.json`)
+  - `[x]` Build `TrustScoreGauge.tsx`
+  - `[x]` Build `CorrelationHeatmap.tsx`
+  - `[x]` Build `DistributionChart.tsx`
+  - `[x]` Build `TrendLineChart.tsx`
+  - `[x]` Build `NLExplorer.tsx`
+  - `[x]` Rebuild dashboard with Analytics + Explorer tabs
