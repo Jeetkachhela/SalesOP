@@ -35,15 +35,12 @@ Add the following variables in the **Environment** tab:
 > [!NOTE]
 > **Dynamic CORS Origins:** We updated the backend middleware (`backend/app/main.py`) to parse `BACKEND_CORS_ORIGINS` dynamically. This prevents cross-origin resource sharing (CORS) blocks between the Next.js Vercel frontend and the Render API.
 
-### C. Critical: Persistent File Storage (Render Disk)
-*   **The Issue:** Render instances use an ephemeral filesystem. If the container restarts (daily or on new deploys), any CSV files stored in `data/uploads` will be lost. This would cause the **Auto-Merge** feature to fail since it reads the merged datasets from disk.
-*   **The Solution:** In your Render Web Service dashboard:
-    1. Go to the **Disks** tab.
-    2. Click **Add Disk**.
-    3. Name: `uploads-store` (or choice).
-    4. Mount Path: `/app/data/uploads` (This is the workspace folder).
-    5. Size: `1 GB` (Plenty for CSV datasets).
-    This mounts a persistent volume to preserve all uploaded files across deployments and container restarts!
+### C. Free-Tier Optimized: Stateless Database Storage (No Paid Disk Needed!)
+*   **The Issue:** Render's free tier uses an ephemeral filesystem. If the container restarts or spins down (due to inactivity), any uploaded CSV files stored temporarily in `data/uploads` are wiped. This would break the **Auto-Merge** feature which reads source CSV files.
+*   **Our Solution (100% Free):** We designed and implemented **database-backed file persistence**! The backend automatically saves all raw and merged CSV datasets as compressed text inside your free Neon PostgreSQL database (`uploads` and `merged_datasets` tables). 
+*   **How it works:** If Render restarts and the container's disk is wiped, the backend automatically detects that a file is missing from local disk, retrieves its content from your Neon PostgreSQL database, restores it on the ephemeral filesystem, and merges or processes it dynamically.
+*   **Result:** You get completely robust, persistent dataset storage across all deployments and container restarts for **$0.00/month**! You do NOT need a paid Render Persistent Disk!
+
 
 ---
 
