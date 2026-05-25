@@ -65,3 +65,6 @@ temp/
 *.tar.gz
 *.tgz
 datasets/
+
+# Ensure Next.js frontend lib folder is NOT ignored
+!frontend/src/lib/
