@@ -11,7 +11,7 @@ if (apiUrl) {
   }
 }
 
-const connectSrc = `connect-src 'self' https://sales-op-68o2.vercel.app http://localhost:3000 http://localhost:8000 http://127.0.0.1:8000 https://*.onrender.com${backendOrigin};`;
+const connectSrc = `connect-src 'self' https://sales-op-68o2.vercel.app https://sales-op-6802.vercel.app https://sales-op-6802-3uuzfff4u-jeetkachhelas-projects.vercel.app https://*.vercel.app http://localhost:3000 http://localhost:8000 http://127.0.0.1:8000 https://*.onrender.com${backendOrigin};`;
 
 const nextConfig: NextConfig = {
   productionBrowserSourceMaps: false, // Completely disable source maps exposure in production

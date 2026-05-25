@@ -17,11 +17,13 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# 1. CORS Hardening
+# 1. CORS Hardening (Dynamic Vercel Namespace Whitelisting)
 allowed_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "https://sales-op-68o2.vercel.app",
+    "https://sales-op-6802.vercel.app",
+    "https://sales-op-6802-3uuzfff4u-jeetkachhelas-projects.vercel.app",
 ]
 env_origins = os.getenv("BACKEND_CORS_ORIGINS")
 if env_origins:
@@ -30,8 +32,22 @@ if env_origins:
 # Enforce clean deduplicated list
 allowed_origins = list(set(allowed_origins))
 
+class DynamicCORSMiddleware(CORSMiddleware):
+    def is_allowed_origin(self, origin: str) -> bool:
+        if super().is_allowed_origin(origin):
+            return True
+        # Allow any Vercel preview or production deployments under your Vercel namespace or project name
+        origin_lower = origin.lower()
+        if (
+            origin_lower.endswith("-jeetkachhelas-projects.vercel.app") 
+            or "sales-op-6802" in origin_lower 
+            or "sales-op-68o2" in origin_lower
+        ):
+            return True
+        return False
+
 app.add_middleware(
-    CORSMiddleware,
+    DynamicCORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
@@ -70,6 +86,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             
         # Strict CSP rules - Dynamically whitelist allowed origins
         connect_src_origins = " ".join(allowed_origins)
+        req_origin = request.headers.get("origin")
+        if req_origin:
+            req_origin_lower = req_origin.lower()
+            if (
+                req_origin in allowed_origins 
+                or req_origin_lower.endswith("-jeetkachhelas-projects.vercel.app") 
+                or "sales-op-6802" in req_origin_lower 
+                or "sales-op-68o2" in req_origin_lower
+            ):
+                connect_src_origins += f" {req_origin}"
+                
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
