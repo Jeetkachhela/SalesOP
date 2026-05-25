@@ -40,6 +40,14 @@ def process_upload_background(upload_id: str, file_bytes: bytes, db: Session):
         file_path = f"data/uploads/{upload_id}.csv"
         with open(file_path, "wb") as f:
             f.write(file_bytes)
+            
+        # Save file content to database for stateless persistence (Render Free Tier)
+        try:
+            upload.file_content = file_bytes.decode('utf-8', errors='ignore')
+            db.commit()
+        except Exception as db_err:
+            logger.error(f"Failed to save file content to database for upload {upload_id}: {str(db_err)}")
+
         
         # Simulate heavy parsing + chunked sanitization
         df = parse_and_sanitize_csv(file_bytes)

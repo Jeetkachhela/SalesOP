@@ -15,8 +15,10 @@ class Upload(Base):
     mime_type = Column(String, nullable=False)
     status = Column(String, default="UPLOADED", nullable=False)  # UPLOADED, PARSING, SCHEMA_ANALYSIS, FAILED
     error_message = Column(String, nullable=True)
+    file_content = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
 
 class MergedDataset(Base):
     __tablename__ = "merged_datasets"
@@ -26,6 +28,8 @@ class MergedDataset(Base):
     name = Column(String, nullable=False)
     status = Column(String, default="MERGING", nullable=False)
     error_message = Column(String, nullable=True)
+    file_content = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
 

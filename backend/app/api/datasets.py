@@ -127,8 +127,23 @@ async def merge_datasets_endpoint(
     path1 = f"data/uploads/{upload1.id}.csv"
     path2 = f"data/uploads/{upload2.id}.csv"
     
-    if not os.path.exists(path1) or not os.path.exists(path2):
-        raise HTTPException(status_code=400, detail="Data files not found on disk.")
+    # Restore file1 from database if missing on disk (Render free tier ephemeral restart)
+    if not os.path.exists(path1):
+        if upload1.file_content:
+            os.makedirs("data/uploads", exist_ok=True)
+            with open(path1, "w", encoding="utf-8") as f:
+                f.write(upload1.file_content)
+        else:
+            raise HTTPException(status_code=400, detail=f"Dataset {upload1.filename} is missing from both disk and database.")
+            
+    # Restore file2 from database if missing on disk (Render free tier ephemeral restart)
+    if not os.path.exists(path2):
+        if upload2.file_content:
+            os.makedirs("data/uploads", exist_ok=True)
+            with open(path2, "w", encoding="utf-8") as f:
+                f.write(upload2.file_content)
+        else:
+            raise HTTPException(status_code=400, detail=f"Dataset {upload2.filename} is missing from both disk and database.")
         
     try:
         df1 = pd.read_csv(path1)
@@ -154,6 +169,15 @@ async def merge_datasets_endpoint(
         
         merged_path = f"data/uploads/{merged_dataset.id}.csv"
         merged_df.to_csv(merged_path, index=False)
+        
+        # Save merged file content to database for stateless persistence
+        try:
+            merged_csv_str = merged_df.to_csv(index=False)
+            merged_dataset.file_content = merged_csv_str
+            db.commit()
+        except Exception as db_err:
+            logger.error(f"Failed to save merged file content to database: {str(db_err)}")
+
         
         background_tasks.add_task(process_merge_background, merged_dataset.id, merged_df, db)
         
