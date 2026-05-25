@@ -68,13 +68,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if request.url.scheme == "https":
             response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
             
-        # Strict CSP rules
+        # Strict CSP rules - Dynamically whitelist allowed origins
+        connect_src_origins = " ".join(allowed_origins)
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data:; "
-            "connect-src 'self' https://sales-op-68o2.vercel.app http://localhost:3000 http://localhost:8000 http://127.0.0.1:8000; "
+            f"connect-src 'self' {connect_src_origins} https://*.onrender.com; "
             "frame-ancestors 'none';"
         )
         return response
