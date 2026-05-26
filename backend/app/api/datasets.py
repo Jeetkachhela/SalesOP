@@ -34,12 +34,15 @@ class MergeRequest(BaseModel):
 def process_merge_background(merged_dataset_id: str, df: pd.DataFrame, db: Session):
     logger.info(f"Background task started for merged dataset {merged_dataset_id}")
     merged_ds = db.query(MergedDataset).filter(MergedDataset.id == merged_dataset_id).first()
+    upload_entry = db.query(Upload).filter(Upload.id == merged_dataset_id).first()
     if not merged_ds:
         return
         
     try:
         # Schema & Quality Analysis
         merged_ds.status = "SCHEMA_ANALYSIS"
+        if upload_entry:
+            upload_entry.status = "SCHEMA_ANALYSIS"
         db.commit()
         quality_findings = evaluate_data_quality(df)
         quality_report = DataQualityReport(upload_id=merged_ds.id, findings=quality_findings)
@@ -48,6 +51,8 @@ def process_merge_background(merged_dataset_id: str, df: pd.DataFrame, db: Sessi
         
         # Statistical Analysis
         merged_ds.status = "STATISTICAL_ANALYSIS"
+        if upload_entry:
+            upload_entry.status = "STATISTICAL_ANALYSIS"
         db.commit()
         stat_findings = evaluate_statistics_and_anomalies(df)
         stat_report = StatisticalFinding(
@@ -60,6 +65,8 @@ def process_merge_background(merged_dataset_id: str, df: pd.DataFrame, db: Sessi
         
         # AI Interpretation
         merged_ds.status = "AI_INTERPRETATION"
+        if upload_entry:
+            upload_entry.status = "AI_INTERPRETATION"
         db.commit()
         ai_insights = generate_ai_insights(quality_findings, stat_findings)
         
@@ -75,12 +82,17 @@ def process_merge_background(merged_dataset_id: str, df: pd.DataFrame, db: Sessi
         db.commit()
         
         merged_ds.status = "READY"
+        if upload_entry:
+            upload_entry.status = "VISUALIZATION_READY"
         db.commit()
         
         logger.info(f"Merged Dataset {merged_dataset_id} fully analyzed.")
         
     except Exception as e:
         merged_ds.status = "FAILED"
+        if upload_entry:
+            upload_entry.status = "FAILED"
+            upload_entry.error_message = str(e)
         merged_ds.error_message = str(e)
         db.commit()
         logger.error(f"Merge processing failed: {str(e)}")
@@ -157,31 +169,43 @@ async def merge_datasets_endpoint(
             right_on=request.right_on
         )
         
-        # Save merged file
+        merged_csv_str = merged_df.to_csv(index=False)
+        merged_uuid = uuid.uuid4()
+        
+        # 1. Create twin Upload entry with same UUID to allow standard uploads UI listing
+        upload_entry = Upload(
+            id=merged_uuid,
+            user_id=current_user.id,
+            filename=request.merged_name if request.merged_name.lower().endswith(".csv") else f"{request.merged_name}.csv",
+            file_size_bytes=len(merged_csv_str.encode('utf-8')),
+            mime_type="text/csv",
+            status="PROCESSING",
+            file_content=merged_csv_str
+        )
+        db.add(upload_entry)
+        
+        # 2. Create MergedDataset row with the same UUID
         merged_dataset = MergedDataset(
+            id=merged_uuid,
             session_id=sess_id,
             name=request.merged_name,
-            status="PROCESSING"
+            status="PROCESSING",
+            file_content=merged_csv_str
         )
         db.add(merged_dataset)
         db.commit()
         db.refresh(merged_dataset)
         
-        merged_path = f"data/uploads/{merged_dataset.id}.csv"
+        merged_path = f"data/uploads/{merged_uuid}.csv"
         merged_df.to_csv(merged_path, index=False)
-        
-        # Save merged file content to database for stateless persistence
-        try:
-            merged_csv_str = merged_df.to_csv(index=False)
-            merged_dataset.file_content = merged_csv_str
-            db.commit()
-        except Exception as db_err:
-            logger.error(f"Failed to save merged file content to database: {str(db_err)}")
-
         
         background_tasks.add_task(process_merge_background, merged_dataset.id, merged_df, db)
         
-        return {"message": "Merge started in background", "merged_dataset_id": merged_dataset.id}
+        return {
+            "message": "Merge started in background", 
+            "id": merged_dataset.id,
+            "merged_dataset_id": merged_dataset.id
+        }
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

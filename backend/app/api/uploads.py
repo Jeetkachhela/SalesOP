@@ -143,16 +143,36 @@ async def upload_dataset(
         raise HTTPException(status_code=400, detail="Invalid file format. Binary files/archives are strictly prohibited.")
 
     
-    upload = Upload(
-        user_id=current_user.id,
-        filename=file.filename,
-        file_size_bytes=file_size,
-        mime_type=file.content_type,
-        status="UPLOADED"
-    )
-    db.add(upload)
-    db.commit()
-    db.refresh(upload)
+    # Deduplicate: reuse existing upload with same filename for this user, resetting its status and clearing old reports.
+    existing_upload = db.query(Upload).filter(
+        Upload.user_id == current_user.id,
+        Upload.filename == file.filename
+    ).first()
+
+    if existing_upload:
+        # Clear child reports
+        db.query(DataQualityReport).filter(DataQualityReport.upload_id == existing_upload.id).delete()
+        db.query(StatisticalFinding).filter(StatisticalFinding.upload_id == existing_upload.id).delete()
+        db.query(AIInsightReport).filter(AIInsightReport.upload_id == existing_upload.id).delete()
+        
+        existing_upload.file_size_bytes = file_size
+        existing_upload.mime_type = file.content_type
+        existing_upload.status = "UPLOADED"
+        existing_upload.error_message = None
+        db.commit()
+        db.refresh(existing_upload)
+        upload = existing_upload
+    else:
+        upload = Upload(
+            user_id=current_user.id,
+            filename=file.filename,
+            file_size_bytes=file_size,
+            mime_type=file.content_type,
+            status="UPLOADED"
+        )
+        db.add(upload)
+        db.commit()
+        db.refresh(upload)
     
     # Start background processing
     background_tasks.add_task(process_upload_background, upload.id, file_bytes, db)
@@ -163,3 +183,57 @@ async def upload_dataset(
 def list_uploads(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     uploads = db.query(Upload).filter(Upload.user_id == current_user.id).order_by(Upload.created_at.desc()).all()
     return uploads
+
+@router.post("/{upload_id}/regenerate", response_model=UploadResponse)
+def regenerate_dataset(
+    upload_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    upload = db.query(Upload).filter(
+        Upload.id == upload_id,
+        Upload.user_id == current_user.id
+    ).first()
+    
+    if not upload:
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+        
+    # Retrieve file content from disk or database
+    file_bytes = None
+    file_path = f"data/uploads/{upload_id}.csv"
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, "rb") as f:
+                file_bytes = f.read()
+        except Exception as e:
+            logger.error(f"Failed to read file from disk for regenerate: {str(e)}")
+            
+    if not file_bytes and upload.file_content:
+        file_bytes = upload.file_content.encode('utf-8')
+        # Re-save to disk for any other processes expecting it
+        try:
+            os.makedirs("data/uploads", exist_ok=True)
+            with open(file_path, "wb") as f:
+                f.write(file_bytes)
+        except Exception as disk_err:
+            logger.error(f"Failed to restore file to disk: {str(disk_err)}")
+        
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="Dataset content is missing or unavailable.")
+        
+    # Clear child reports
+    db.query(DataQualityReport).filter(DataQualityReport.upload_id == upload.id).delete()
+    db.query(StatisticalFinding).filter(StatisticalFinding.upload_id == upload.id).delete()
+    db.query(AIInsightReport).filter(AIInsightReport.upload_id == upload.id).delete()
+    
+    # Reset status
+    upload.status = "UPLOADED"
+    upload.error_message = None
+    db.commit()
+    db.refresh(upload)
+    
+    # Start background processing
+    background_tasks.add_task(process_upload_background, upload.id, file_bytes, db)
+    
+    return upload

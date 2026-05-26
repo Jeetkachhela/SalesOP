@@ -26,7 +26,8 @@ import {
   AlertTriangle,
   CheckCircle,
   FileSpreadsheet,
-  Clock
+  Clock,
+  RefreshCw
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -59,6 +60,23 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<"upload" | "merge" | "analytics" | "explorer" | "intelligence">("upload");
   const [uploads, setUploads] = useState<DatasetUpload[]>([]);
   const [selectedUploadId, setSelectedUploadId] = useState<string | null>(null);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
+  const handleRegenerate = async (uploadId: string) => {
+    setIsRegenerating(true);
+    const toastId = toast.loading("Re-triggering background analysis...");
+    try {
+      await fetchApi(`/uploads/${uploadId}/regenerate`, {
+        method: "POST"
+      });
+      toast.success("Analysis regenerated successfully! Processing started.", { id: toastId });
+      loadUploads();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to regenerate analysis.", { id: toastId });
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
 
   // Track which upload ID has already had its analytics fetched — prevents
   // the 5-second polling interval from triggering repeated heavy API calls.
@@ -422,7 +440,18 @@ export default function Dashboard() {
                         <h2 className="text-xl font-bold text-white flex items-center gap-2">
                           {activeUpload.filename}
                         </h2>
-                        <p className="text-xs text-slate-500 font-mono mt-1">UUID: {activeUpload.id}</p>
+                        <p className="text-xs text-slate-500 font-mono mt-1 flex items-center gap-3">
+                          <span>UUID: {activeUpload.id}</span>
+                          <button 
+                            onClick={() => handleRegenerate(activeUpload.id)}
+                            disabled={isRegenerating}
+                            title="Regenerate all statistics and AI insights for this dataset"
+                            className="text-slate-400 hover:text-cyan-400 disabled:opacity-50 transition-colors flex items-center gap-1.5 focus:outline-none"
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? 'animate-spin' : ''}`} />
+                            <span className="text-[10px] font-sans font-bold hover:underline">Regenerate Analysis</span>
+                          </button>
+                        </p>
                       </div>
                       <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold border ${
                         isReady 
@@ -446,12 +475,22 @@ export default function Dashboard() {
                     )}
 
                     {activeUpload.status === "FAILED" && (
-                      <div className="p-4 bg-rose-950/10 border border-rose-900/20 rounded-xl space-y-2 text-center text-xs">
+                      <div className="p-4 bg-rose-950/10 border border-rose-900/20 rounded-xl space-y-3 text-center text-xs">
                         <AlertTriangle className="w-8 h-8 text-rose-500 mx-auto" />
                         <h4 className="font-semibold text-rose-400">Processing Pipeline Failed</h4>
                         <p className="text-slate-400 max-w-xs mx-auto">
                           Error Details: {activeUpload.error_message || "Unknown error during CSV parsing."}
                         </p>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => handleRegenerate(activeUpload.id)}
+                          disabled={isRegenerating}
+                          className="mt-2 border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-400 text-rose-300 gap-1.5 mx-auto flex items-center"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? 'animate-spin' : ''}`} />
+                          Regenerate Analysis
+                        </Button>
                       </div>
                     )}
 
@@ -580,7 +619,7 @@ export default function Dashboard() {
                           </div>
                           
                           <div className="border-t border-slate-850 pt-4 mt-6 flex justify-between items-center text-[10px] text-slate-500 font-mono">
-                            <span>Engine: Groq LLaMA3-8B-8192</span>
+                            <span>Engine: Groq LLaMA3.1-8B-Instant</span>
                             <span>Temp: 0.1 (Strict Objectivity)</span>
                           </div>
                         </Card>

@@ -85,7 +85,7 @@ def generate_ai_insights(quality_findings: dict, stat_findings: dict) -> dict:
     
     try:
         response = client.chat.completions.create(
-            model="llama3-8b-8192",  # Fast, efficient model for structured JSON
+            model="llama-3.1-8b-instant",  # Fast, efficient model for structured JSON
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}
@@ -150,7 +150,7 @@ RULES:
     
     try:
         response = client.chat.completions.create(
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant",
             messages=messages,
             temperature=0.3,
             max_tokens=1024
@@ -237,7 +237,7 @@ def nl_query_to_chart(
     
     try:
         response = client.chat.completions.create(
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant",
             messages=[
                 {"role": "system", "content": NL_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt}
@@ -269,10 +269,13 @@ def _offline_insights_fallback(quality_findings: dict, stat_findings: dict) -> d
     for col, data in quality_findings.get("columns", {}).items():
         if data.get("missing_count", 0) > 0:
             warnings.append(f"Column '{col}' has {data.get('missing_count')} missing values.")
-            
-    anomalies = [f"Anomaly in row {a.get('row_index')}: {a.get('column')} value {a.get('value')} exceeds Z-score boundary" 
-                 for a in stat_findings.get("anomalies", [])[:5]]
-                 
+    anomalies = []
+    for col, data in stat_findings.get("anomalies", {}).items():
+        count = data.get("anomaly_count", 0)
+        if count > 0:
+            anomalies.append(f"Column '{col}' has {count} statistical anomalies (values outside 3 standard deviations).")
+    anomalies = anomalies[:5]
+    
     return {
         "summary": f"Offline data reliability report completed. Dataset contains {total_rows} records and {len(cols)} columns, returning a Data Trust Score™ of {trust_score:.1f}/100.",
         "insights": [
