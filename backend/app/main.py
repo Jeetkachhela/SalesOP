@@ -21,6 +21,7 @@ app = FastAPI(
 allowed_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://sales-op-five.vercel.app",
     "https://sales-op-68o2.vercel.app",
     "https://sales-op-6802.vercel.app",
     "https://sales-op-6802-3uuzfff4u-jeetkachhelas-projects.vercel.app",
@@ -36,10 +37,11 @@ class DynamicCORSMiddleware(CORSMiddleware):
     def is_allowed_origin(self, origin: str) -> bool:
         if super().is_allowed_origin(origin):
             return True
-        # Allow any Vercel preview or production deployments under your Vercel namespace or project name
+        # Allow any Vercel preview or production deployments containing "sales-op" or "salesop" and ending with .vercel.app
         origin_lower = origin.lower()
         if (
             origin_lower.endswith("-jeetkachhelas-projects.vercel.app") 
+            or (origin_lower.endswith(".vercel.app") and ("sales-op" in origin_lower or "salesop" in origin_lower))
             or "sales-op-6802" in origin_lower 
             or "sales-op-68o2" in origin_lower
         ):
