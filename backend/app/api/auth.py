@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from pydantic import BaseModel, EmailStr
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie, Header, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from jose import jwt, JWTError
@@ -63,6 +63,7 @@ def register_user(user_in: UserCreate, db: Session = Depends(get_db)):
 @router.post("/login")
 def login_access_token(
     response: Response,
+    request: Request,
     db: Session = Depends(get_db),
     form_data: OAuth2PasswordRequestForm = Depends()
 ):
@@ -111,21 +112,30 @@ def login_access_token(
     access_token = create_access_token(data={"email": user.email})
     refresh_token = create_refresh_token(data={"email": user.email})
     
+    # Determine secure flags to match original cookie signature
+    is_secure = (
+        request.url.scheme == "https" 
+        or request.headers.get("x-forwarded-proto") == "https"
+        or (request.url.hostname != "localhost" and request.url.hostname != "127.0.0.1")
+    )
+    samesite_val = "none" if is_secure else "lax"
+    secure_val = True if is_secure else False
+    
     # Set Secure, httpOnly cookies
     response.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=True,
-        samesite="strict",
+        secure=secure_val,
+        samesite=samesite_val,
         max_age=900
     )
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=True,
-        samesite="strict",
+        secure=secure_val,
+        samesite=samesite_val,
         max_age=604800
     )
     
@@ -138,6 +148,7 @@ def login_access_token(
 @router.post("/refresh")
 def refresh_tokens(
     response: Response,
+    request: Request,
     refresh_token: Optional[str] = Cookie(None)
 ):
     """Enforces standard Refresh Token Rotation (RTR) and blacklisting"""
@@ -167,21 +178,30 @@ def refresh_tokens(
         new_access_token = create_access_token(data={"email": email})
         new_refresh_token = create_refresh_token(data={"email": email})
         
+        # Determine secure flags to match original cookie signature
+        is_secure = (
+            request.url.scheme == "https" 
+            or request.headers.get("x-forwarded-proto") == "https"
+            or (request.url.hostname != "localhost" and request.url.hostname != "127.0.0.1")
+        )
+        samesite_val = "none" if is_secure else "lax"
+        secure_val = True if is_secure else False
+        
         # Inject new cookies
         response.set_cookie(
             key="access_token",
             value=new_access_token,
             httponly=True,
-            secure=True,
-            samesite="strict",
+            secure=secure_val,
+            samesite=samesite_val,
             max_age=900
         )
         response.set_cookie(
             key="refresh_token",
             value=new_refresh_token,
             httponly=True,
-            secure=True,
-            samesite="strict",
+            secure=secure_val,
+            samesite=samesite_val,
             max_age=604800
         )
         
@@ -195,6 +215,7 @@ def refresh_tokens(
 @router.post("/logout")
 def logout_user(
     response: Response,
+    request: Request,
     access_token: Optional[str] = Cookie(None),
     refresh_token: Optional[str] = Cookie(None)
 ):
@@ -212,9 +233,28 @@ def logout_user(
             except JWTError:
                 pass
                 
-    # Clear browser cookies
-    response.delete_cookie("access_token")
-    response.delete_cookie("refresh_token")
+    # Determine secure flags to match original cookie signature
+    is_secure = (
+        request.url.scheme == "https" 
+        or request.headers.get("x-forwarded-proto") == "https"
+        or (request.url.hostname != "localhost" and request.url.hostname != "127.0.0.1")
+    )
+    samesite_val = "none" if is_secure else "lax"
+    secure_val = True if is_secure else False
+    
+    # Clear browser cookies matching their original signature
+    response.delete_cookie(
+        "access_token",
+        secure=secure_val,
+        samesite=samesite_val,
+        httponly=True
+    )
+    response.delete_cookie(
+        "refresh_token",
+        secure=secure_val,
+        samesite=samesite_val,
+        httponly=True
+    )
     
     return {"message": "Logged out successfully and session invalidated."}
 
