@@ -27,12 +27,24 @@ def merge_datasets(
         logger.info(f"Auto-detected merge keys: {left_on}")
         
     try:
-        # Coerce join keys to string to prevent type-mismatch ValueError join failures
+        # Avoid full deep copies which duplicate the entire dataset in memory.
+        # Only copy if we need to modify the join keys to resolve type mismatch or strip strings.
         if left_on in df1.columns and right_on in df2.columns:
-            df1 = df1.copy()
-            df2 = df2.copy()
-            df1[left_on] = df1[left_on].astype(str).str.strip()
-            df2[right_on] = df2[right_on].astype(str).str.strip()
+            type1 = df1[left_on].dtype
+            type2 = df2[right_on].dtype
+            
+            # If both are numeric (integers or floats), we can join directly without string coercion
+            is_num1 = pd.api.types.is_numeric_dtype(type1)
+            is_num2 = pd.api.types.is_numeric_dtype(type2)
+            
+            if not (is_num1 and is_num2):
+                logger.info(f"Converting join keys to stripped strings due to type mismatch or non-numeric types ({type1} vs {type2})")
+                df1 = df1.copy(deep=False)
+                df2 = df2.copy(deep=False)
+                df1[left_on] = df1[left_on].astype(str).str.strip()
+                df2[right_on] = df2[right_on].astype(str).str.strip()
+            else:
+                logger.info(f"Numeric join keys detected ({type1} and {type2}). Direct join enabled.")
             
         merged_df = pd.merge(
             df1, 

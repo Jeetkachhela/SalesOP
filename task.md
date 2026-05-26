@@ -19,3 +19,7 @@
   - `[x]` Build `TrendLineChart.tsx`
   - `[x]` Build `NLExplorer.tsx`
   - `[x]` Rebuild dashboard with Analytics + Explorer tabs
+- `[x]` **Phase 5: Merged Dataset Performance & Visual Canvas Fixes**
+  - `[x]` Offloaded reading, merging, to_csv converting, file saving, and database updating of merged datasets to the background task to eliminate event loop blocking and ensure sub-second response times on the `/merge` endpoint.
+  - `[x]` Optimized `merge_datasets` to use shallow copies (`deep=False`) and bypass string coercion/stripping for compatible numeric keys, dramatically reducing memory and processing overhead.
+  - `[x]` Configured the `dark` class globally on the `html` element in `layout.tsx` to fix light theme leakage on scroll/elastic bounce and secure a beautiful, continuous dark slate canvas.

@@ -34,7 +34,16 @@ class MergeRequest(BaseModel):
     right_on: Optional[str] = None
     merged_name: str = "Merged Dataset"
 
-def process_merge_background(merged_dataset_id: str, df: pd.DataFrame, db: Session):
+def process_merge_background(
+    merged_dataset_id: str, 
+    path1: str, 
+    path2: str, 
+    join_type: str, 
+    left_on: Optional[str], 
+    right_on: Optional[str], 
+    merged_name: str, 
+    db: Session
+):
     logger.info(f"Background task started for merged dataset {merged_dataset_id}")
     merged_ds = db.query(MergedDataset).filter(MergedDataset.id == merged_dataset_id).first()
     upload_entry = db.query(Upload).filter(Upload.id == merged_dataset_id).first()
@@ -42,7 +51,44 @@ def process_merge_background(merged_dataset_id: str, df: pd.DataFrame, db: Sessi
         return
         
     try:
-        # Schema & Quality Analysis
+        # Step 1: Merging Datasets
+        merged_ds.status = "MERGING"
+        if upload_entry:
+            upload_entry.status = "MERGING"
+        db.commit()
+        
+        logger.info(f"Reading source datasets: {path1} and {path2}")
+        df1 = pd.read_csv(path1)
+        df2 = pd.read_csv(path2)
+        
+        logger.info(f"Merging datasets dynamically...")
+        df = merge_datasets(
+            df1, 
+            df2, 
+            join_type=join_type, 
+            left_on=left_on, 
+            right_on=right_on
+        )
+        
+        # Step 2: Write merged file to disk
+        merged_path = f"data/uploads/{merged_dataset_id}.csv"
+        os.makedirs("data/uploads", exist_ok=True)
+        df.to_csv(merged_path, index=False)
+        logger.info(f"Merged dataset saved to disk at {merged_path}")
+        
+        # Step 3: Serialize merged CSV and update DB records in background
+        logger.info("Converting merged DataFrame to CSV string for database persistence...")
+        merged_csv_str = df.to_csv(index=False)
+        merged_bytes = merged_csv_str.encode('utf-8')
+        
+        merged_ds.file_content = merged_csv_str
+        if upload_entry:
+            upload_entry.file_content = merged_csv_str
+            upload_entry.file_size_bytes = len(merged_bytes)
+        db.commit()
+        logger.info("Database records successfully updated with merged content.")
+        
+        # Step 4: Schema & Quality Analysis
         merged_ds.status = "SCHEMA_ANALYSIS"
         if upload_entry:
             upload_entry.status = "SCHEMA_ANALYSIS"
@@ -52,7 +98,7 @@ def process_merge_background(merged_dataset_id: str, df: pd.DataFrame, db: Sessi
         db.add(quality_report)
         db.commit()
         
-        # Statistical Analysis
+        # Step 5: Statistical Analysis
         merged_ds.status = "STATISTICAL_ANALYSIS"
         if upload_entry:
             upload_entry.status = "STATISTICAL_ANALYSIS"
@@ -73,7 +119,7 @@ def process_merge_background(merged_dataset_id: str, df: pd.DataFrame, db: Sessi
         db.add(stat_report)
         db.commit()
         
-        # AI Interpretation
+        # Step 6: AI Interpretation
         merged_ds.status = "AI_INTERPRETATION"
         if upload_entry:
             upload_entry.status = "AI_INTERPRETATION"
@@ -99,6 +145,7 @@ def process_merge_background(merged_dataset_id: str, df: pd.DataFrame, db: Sessi
         logger.info(f"Merged Dataset {merged_dataset_id} fully analyzed.")
         
     except Exception as e:
+        db.rollback()
         merged_ds.status = "FAILED"
         if upload_entry:
             upload_entry.status = "FAILED"
@@ -168,29 +215,18 @@ async def merge_datasets_endpoint(
             raise HTTPException(status_code=400, detail=f"Dataset {upload2.filename} is missing from both disk and database.")
         
     try:
-        df1 = pd.read_csv(path1)
-        df2 = pd.read_csv(path2)
-        
-        merged_df = merge_datasets(
-            df1, 
-            df2, 
-            join_type=request.join_type, 
-            left_on=request.left_on, 
-            right_on=request.right_on
-        )
-        
-        merged_csv_str = merged_df.to_csv(index=False)
         merged_uuid = uuid.uuid4()
         
         # 1. Create twin Upload entry with same UUID to allow standard uploads UI listing
+        # Create as placeholder with zero size and null content to return instantly
         upload_entry = Upload(
             id=merged_uuid,
             user_id=current_user.id,
             filename=request.merged_name if request.merged_name.lower().endswith(".csv") else f"{request.merged_name}.csv",
-            file_size_bytes=len(merged_csv_str.encode('utf-8')),
+            file_size_bytes=0,
             mime_type="text/csv",
             status="PROCESSING",
-            file_content=merged_csv_str
+            file_content=None
         )
         db.add(upload_entry)
         
@@ -200,16 +236,26 @@ async def merge_datasets_endpoint(
             session_id=sess_id,
             name=request.merged_name,
             status="PROCESSING",
-            file_content=merged_csv_str
+            file_content=None
         )
         db.add(merged_dataset)
         db.commit()
         db.refresh(merged_dataset)
         
-        merged_path = f"data/uploads/{merged_uuid}.csv"
-        merged_df.to_csv(merged_path, index=False)
+        # 3. Offload the entire heavy operations (reading, merging, database updates, analysis) to the background task
+        background_tasks.add_task(
+            process_merge_background, 
+            merged_dataset.id, 
+            path1, 
+            path2, 
+            request.join_type, 
+            request.left_on, 
+            request.right_on, 
+            request.merged_name, 
+            db
+        )
         
-        background_tasks.add_task(process_merge_background, merged_dataset.id, merged_df, db)
+        logger.info(f"Offloaded merge processing for {merged_uuid} to background thread successfully.")
         
         return {
             "message": "Merge started in background", 
