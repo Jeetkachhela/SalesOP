@@ -13,6 +13,14 @@ if (typeof window !== "undefined" && window.location.hostname !== "localhost" &&
 export async function fetchApi(endpoint: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers || {});
   
+  // Dynamic Bearer fallback to bypass modern browser third-party cookie restrictions
+  if (typeof window !== "undefined") {
+    const token = useAuth.getState().token;
+    if (token && !headers.has("Authorization")) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+  }
+  
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     credentials: "include", // Enforce secure cookie transmission automatically
