@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status,
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.user import User
-from app.models.upload import Upload
+from app.models.upload import Upload, MergedDataset
 from app.models.analysis import DataQualityReport, StatisticalFinding, AIInsightReport
 from app.schemas.upload import UploadResponse
 from app.api.deps import get_current_user
@@ -237,3 +237,39 @@ def regenerate_dataset(
     background_tasks.add_task(process_upload_background, upload.id, file_bytes, db)
     
     return upload
+
+@router.delete("/{upload_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_dataset(
+    upload_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    upload = db.query(Upload).filter(
+        Upload.id == upload_id,
+        Upload.user_id == current_user.id
+    ).first()
+    
+    if not upload:
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+        
+    # Delete child reports
+    db.query(DataQualityReport).filter(DataQualityReport.upload_id == upload.id).delete()
+    db.query(StatisticalFinding).filter(StatisticalFinding.upload_id == upload.id).delete()
+    db.query(AIInsightReport).filter(AIInsightReport.upload_id == upload.id).delete()
+    
+    # Delete file from disk
+    file_path = f"data/uploads/{upload_id}.csv"
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except Exception as e:
+            logger.error(f"Failed to delete file from disk: {str(e)}")
+            
+    # Clean up MergedDataset if it exists
+    merged = db.query(MergedDataset).filter(MergedDataset.id == upload.id).first()
+    if merged:
+        db.delete(merged)
+        
+    db.delete(upload)
+    db.commit()
+    return

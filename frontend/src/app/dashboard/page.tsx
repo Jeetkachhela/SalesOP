@@ -27,7 +27,8 @@ import {
   CheckCircle,
   FileSpreadsheet,
   Clock,
-  RefreshCw
+  RefreshCw,
+  Trash2
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -75,6 +76,36 @@ export default function Dashboard() {
       toast.error(err.message || "Failed to regenerate analysis.", { id: toastId });
     } finally {
       setIsRegenerating(false);
+    }
+  };
+
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteUpload = async (uploadId: string, event?: React.MouseEvent) => {
+    if (event) {
+      event.stopPropagation();
+    }
+    
+    const confirmDelete = window.confirm("Are you sure you want to permanently delete this dataset and all of its associated reports?");
+    if (!confirmDelete) return;
+
+    setIsDeleting(true);
+    const toastId = toast.loading("Deleting dataset...");
+    try {
+      await fetchApi(`/uploads/${uploadId}`, {
+        method: "DELETE"
+      });
+      toast.success("Dataset deleted successfully.", { id: toastId });
+      
+      if (selectedUploadId === uploadId) {
+        setSelectedUploadId(null);
+      }
+      
+      loadUploads();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete dataset.", { id: toastId });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -325,13 +356,23 @@ export default function Dashboard() {
                         <p className={`text-xs font-semibold truncate ${isSelected ? "text-cyan-400" : "text-slate-200"}`}>
                           {up.filename}
                         </p>
-                        {isProcessing ? (
-                          <Loader2 size={12} className="animate-spin text-cyan-400 flex-shrink-0" />
-                        ) : up.status === "VISUALIZATION_READY" ? (
-                          <CheckCircle size={12} className="text-emerald-400 flex-shrink-0" />
-                        ) : (
-                          <AlertTriangle size={12} className="text-rose-400 flex-shrink-0" />
-                        )}
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          {isProcessing ? (
+                            <Loader2 size={12} className="animate-spin text-cyan-400" />
+                          ) : up.status === "VISUALIZATION_READY" ? (
+                            <CheckCircle size={12} className="text-emerald-400" />
+                          ) : (
+                            <AlertTriangle size={12} className="text-rose-400" />
+                          )}
+                          <button
+                            onClick={(e) => handleDeleteUpload(up.id, e)}
+                            disabled={isDeleting}
+                            title="Delete Dataset"
+                            className="text-slate-500 hover:text-rose-400 transition-colors p-0.5 focus:outline-none"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
                       </div>
 
                       <div className="flex items-center justify-between text-[10px] text-slate-500 mt-2 font-mono">
@@ -440,8 +481,9 @@ export default function Dashboard() {
                         <h2 className="text-xl font-bold text-white flex items-center gap-2">
                           {activeUpload.filename}
                         </h2>
-                        <p className="text-xs text-slate-500 font-mono mt-1 flex items-center gap-3">
+                        <p className="text-xs text-slate-500 font-mono mt-1 flex items-center gap-3 flex-wrap">
                           <span>UUID: {activeUpload.id}</span>
+                          <span className="text-slate-800">|</span>
                           <button 
                             onClick={() => handleRegenerate(activeUpload.id)}
                             disabled={isRegenerating}
@@ -450,6 +492,16 @@ export default function Dashboard() {
                           >
                             <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? 'animate-spin' : ''}`} />
                             <span className="text-[10px] font-sans font-bold hover:underline">Regenerate Analysis</span>
+                          </button>
+                          <span className="text-slate-800">|</span>
+                          <button 
+                            onClick={(e) => handleDeleteUpload(activeUpload.id, e)}
+                            disabled={isDeleting}
+                            title="Delete dataset and reports permanently"
+                            className="text-slate-400 hover:text-rose-400 disabled:opacity-50 transition-colors flex items-center gap-1.5 focus:outline-none"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span className="text-[10px] font-sans font-bold hover:underline">Delete Dataset</span>
                           </button>
                         </p>
                       </div>
