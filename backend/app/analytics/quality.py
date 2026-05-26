@@ -58,9 +58,8 @@ def evaluate_data_quality(df: pd.DataFrame) -> dict:
             if len(non_null_series) == 0:
                 is_consistent = False
             else:
-                first_type = type(non_null_series.iloc[0])
-                # Highly optimized generator expression with early exit
-                is_consistent = all(type(x) is first_type for x in non_null_series)
+                inferred = pd.api.types.infer_dtype(non_null_series)
+                is_consistent = not inferred.startswith("mixed")
             
         if is_consistent:
             consistent_columns_count += 1
