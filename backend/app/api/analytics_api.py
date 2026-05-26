@@ -5,7 +5,7 @@ from uuid import UUID
 
 from app.core.database import get_db
 from app.models.user import User
-from app.models.upload import Upload, MergedDataset
+from app.models.upload import Upload
 from app.models.session import AnalysisSession
 from app.models.analysis import DataQualityReport, StatisticalFinding, AIInsightReport
 from app.api.deps import get_current_user
@@ -26,14 +26,6 @@ def get_authorized_upload(upload_id: UUID, db: Session, current_user: User):
         if upload.user_id != current_user.id:
             raise HTTPException(status_code=403, detail="Not authorized to access this dataset")
         return upload
-        
-    # Check if it's a MergedDataset
-    merged = db.query(MergedDataset).filter(MergedDataset.id == upload_id).first()
-    if merged:
-        session = db.query(AnalysisSession).filter(AnalysisSession.id == merged.session_id).first()
-        if not session or session.user_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Not authorized to access this dataset")
-        return merged
         
     raise HTTPException(status_code=404, detail="Dataset not found")
 

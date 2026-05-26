@@ -58,7 +58,7 @@ export default function Dashboard() {
   }, [sessionId, generateNewSession]);
 
   // Navigation & Datasets list
-  const [activeTab, setActiveTab] = useState<"upload" | "merge" | "analytics" | "explorer" | "intelligence">("upload");
+  const [activeTab, setActiveTab] = useState<"upload" | "analytics" | "explorer" | "intelligence">("upload");
   const [uploads, setUploads] = useState<DatasetUpload[]>([]);
   const [selectedUploadId, setSelectedUploadId] = useState<string | null>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -255,33 +255,6 @@ export default function Dashboard() {
     }, 1000);
   };
 
-  // Perform multi-dataset merge
-  const handleAutoMerge = async () => {
-    const readyUploads = uploads.filter(u => u.status === "VISUALIZATION_READY");
-    if (readyUploads.length < 2) {
-      toast.warning("At least two successfully processed datasets are required to perform a merge.");
-      return;
-    }
-
-    const toastId = toast.loading("Auto-detecting keys and merging datasets...");
-    try {
-      const res = await fetchApi("/datasets/merge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          upload_ids: readyUploads.map(u => u.id)
-        })
-      });
-      toast.success("Datasets merged successfully!", { id: toastId });
-      loadUploads();
-      if (res && res.id) {
-        setSelectedUploadId(res.id);
-        setActiveTab("analytics");
-      }
-    } catch (err: any) {
-      toast.error(err.message || "Failed to merge datasets.", { id: toastId });
-    }
-  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30">
@@ -413,16 +386,6 @@ export default function Dashboard() {
               }`}
             >
               <Database className="w-3.5 h-3.5" /> Workspace
-            </button>
-            <button
-              onClick={() => setActiveTab("merge")}
-              className={`pb-3 font-semibold text-xs tracking-wider uppercase transition-all flex items-center gap-2 border-b-2 outline-none cursor-pointer ${
-                activeTab === "merge"
-                  ? "border-cyan-500 text-white"
-                  : "border-transparent text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <Settings2 className="w-3.5 h-3.5" /> Auto-Merge
             </button>
             
             {/* Analytics - locked if not ready */}
@@ -583,47 +546,6 @@ export default function Dashboard() {
                     </p>
                   </div>
                 )}
-              </div>
-            )}
-
-            {/* 2. Merge Engine Tab */}
-            {activeTab === "merge" && (
-              <div className="border border-slate-800 bg-slate-900/40 backdrop-blur-xl rounded-xl p-6 shadow-xl space-y-6 max-w-2xl mx-auto text-center relative overflow-hidden">
-                <div className="absolute -top-24 -right-24 w-48 h-48 rounded-full bg-cyan-600/5 blur-3xl pointer-events-none" />
-                <h2 className="text-xl font-bold mb-4 flex items-center justify-center gap-2">
-                  <Settings2 className="text-cyan-400" />
-                  Auto-Merge Engine
-                </h2>
-                <p className="text-slate-400 text-xs max-w-md mx-auto leading-relaxed">
-                  Upload multiple datasets (e.g. Olist Orders and Olist Payments) and click auto-merge. The backend dynamically infers common join keys (like <code>order_id</code>) across the datasets and joins them cleanly without manual configuration or hardcoding.
-                </p>
-
-                <div className="p-4 bg-slate-950/40 border border-slate-850 rounded-xl text-left space-y-3">
-                  <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Eligible Datasets</p>
-                  {uploads.filter(u => u.status === "VISUALIZATION_READY").length < 2 ? (
-                    <p className="text-xs text-slate-500 italic">
-                      You need at least 2 datasets processed successfully to merge. Currently ready: {uploads.filter(u => u.status === "VISUALIZATION_READY").length}
-                    </p>
-                  ) : (
-                    <ul className="space-y-1.5 text-xs text-slate-300">
-                      {uploads.filter(u => u.status === "VISUALIZATION_READY").map(u => (
-                        <li key={u.id} className="flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                          <span>{u.filename}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                
-                <Button 
-                  onClick={handleAutoMerge}
-                  disabled={uploads.filter(u => u.status === "VISUALIZATION_READY").length < 2}
-                  className="w-full mt-4 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg py-3 font-semibold text-xs uppercase tracking-wider transition-colors" 
-                  size="lg"
-                >
-                  Auto-Merge Uploaded Datasets
-                </Button>
               </div>
             )}
 

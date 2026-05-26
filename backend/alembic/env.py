@@ -20,7 +20,7 @@ if config.config_file_name is not None:
 # Import our models so metadata is registered for autogenerate
 from app.core.database import Base
 from app.models.user import User
-from app.models.upload import Upload, MergedDataset
+from app.models.upload import Upload
 from app.models.analysis import DataQualityReport, StatisticalFinding, AIInsightReport
 from app.models.session import AnalysisSession
 from app.models.interactions import UserAnnotation, ChatHistory

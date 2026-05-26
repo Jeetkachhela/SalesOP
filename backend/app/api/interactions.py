@@ -4,7 +4,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.interactions import UserAnnotation, ChatHistory
 from app.models.session import AnalysisSession
-from app.models.upload import Upload, MergedDataset
+from app.models.upload import Upload
 from app.models.analysis import AIInsightReport
 from app.api.deps import get_current_user
 from app.ai.interpreter import chat_with_insights
@@ -76,17 +76,8 @@ def interact_with_ai(
 
     # 2. Verify dataset ownership to prevent BOLA
     upload = db.query(Upload).filter(Upload.id == request.upload_id).first()
-    if upload:
-        if upload.user_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Not authorized to access this dataset")
-    else:
-        merged = db.query(MergedDataset).filter(MergedDataset.id == request.upload_id).first()
-        if merged:
-            merged_session = db.query(AnalysisSession).filter(AnalysisSession.id == merged.session_id).first()
-            if not merged_session or merged_session.user_id != current_user.id:
-                raise HTTPException(status_code=403, detail="Not authorized to access this dataset")
-        else:
-            raise HTTPException(status_code=404, detail="Dataset not found")
+    if not upload or upload.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this dataset")
 
     # Save user message
     user_msg = ChatHistory(

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status,
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.user import User
-from app.models.upload import Upload, MergedDataset
+from app.models.upload import Upload
 from app.models.analysis import DataQualityReport, StatisticalFinding, AIInsightReport
 from app.schemas.upload import UploadResponse
 from app.api.deps import get_current_user
@@ -265,11 +265,6 @@ def delete_dataset(
         except Exception as e:
             logger.error(f"Failed to delete file from disk: {str(e)}")
             
-    # Clean up MergedDataset if it exists
-    merged = db.query(MergedDataset).filter(MergedDataset.id == upload.id).first()
-    if merged:
-        db.delete(merged)
-        
     db.delete(upload)
     db.commit()
     return

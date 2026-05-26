@@ -1,7 +1,7 @@
 import logging
 from app.core.database import engine, Base
 from app.models.user import User
-from app.models.upload import Upload, MergedDataset
+from app.models.upload import Upload
 from app.models.analysis import DataQualityReport, StatisticalFinding, AIInsightReport
 from app.models.session import AnalysisSession
 from app.models.interactions import UserAnnotation, ChatHistory
