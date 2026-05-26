@@ -36,13 +36,17 @@ class DualRateLimiterMiddleware(BaseHTTPMiddleware):
             "default": (60, 60)   # Default: 60 requests per 60s
         }
 
-    def _get_route_bucket(self, path: str) -> Tuple[str, int, int]:
-        """Resolves the throttling bucket limit and window based on path"""
-        if "/api/v1/auth/login" in path or "/api/v1/auth/register" in path:
+    def _get_route_bucket(self, method: str, path: str) -> Tuple[str, int, int]:
+        """Resolves the throttling bucket limit and window based on method and path"""
+        path_lower = path.lower()
+        method_upper = method.upper()
+        
+        if "/api/v1/auth/login" in path_lower or "/api/v1/auth/register" in path_lower:
             return "auth", self.limits["auth"][0], self.limits["auth"][1]
-        elif "/explore" in path or "/chat" in path:
+        elif "/explore" in path_lower or "/chat" in path_lower:
             return "ai", self.limits["ai"][0], self.limits["ai"][1]
-        elif "/api/v1/uploads" in path:
+        elif "/api/v1/uploads" in path_lower and method_upper == "POST":
+            # Only throttle file upload creation strictly (5 uploads per 5 minutes)
             return "upload", self.limits["upload"][0], self.limits["upload"][1]
         else:
             return "default", self.limits["default"][0], self.limits["default"][1]
@@ -55,7 +59,7 @@ class DualRateLimiterMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
             
         client_ip = request.client.host if request.client else "unknown-ip"
-        bucket_key, limit, window = self._get_route_bucket(path)
+        bucket_key, limit, window = self._get_route_bucket(request.method, path)
         
         # Standard Key for identification (IP + route type)
         rate_key = f"rl:{client_ip}:{bucket_key}"
