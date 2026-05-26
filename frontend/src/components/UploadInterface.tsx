@@ -23,8 +23,8 @@ export default function UploadInterface({ onUploadSuccess }: { onUploadSuccess?:
     if (!file) return;
     
     // Strict MVP Limit Check
-    if (file.size > 50 * 1024 * 1024) {
-      toast.error("File size exceeds 50MB limit");
+    if (file.size > 100 * 1024 * 1024) {
+      toast.error("File size exceeds 100MB limit");
       return;
     }
     
@@ -71,7 +71,7 @@ export default function UploadInterface({ onUploadSuccess }: { onUploadSuccess?:
           Upload Dataset
         </CardTitle>
         <CardDescription>
-          Securely upload CSV datasets for deterministic analysis. Limit: 50MB.
+          Securely upload CSV datasets for deterministic analysis. Limit: 100MB.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
@@ -81,7 +81,7 @@ export default function UploadInterface({ onUploadSuccess }: { onUploadSuccess?:
             <p className="mb-2 text-sm text-muted-foreground">
               <span className="font-semibold text-primary">Click to upload</span> or drag and drop
             </p>
-            <p className="text-xs text-muted-foreground">CSV only (MAX. 50MB)</p>
+            <p className="text-xs text-muted-foreground">CSV only (MAX. 100MB)</p>
           </div>
           <input type="file" className="hidden" accept=".csv" onChange={handleFileChange} />
         </label>

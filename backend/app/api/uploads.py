@@ -22,7 +22,7 @@ import pandas as pd
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB limit for MVP
+MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB limit for MVP
 ALLOWED_MIME_TYPES = ["text/csv", "application/vnd.ms-excel"]
 
 def process_upload_background(upload_id: str, file_bytes: bytes, db: Session):
@@ -133,7 +133,7 @@ async def upload_dataset(
     file_size = len(file_bytes)
     
     if file_size > MAX_FILE_SIZE:
-        raise HTTPException(status_code=400, detail="File size exceeds the 50MB limit.")
+        raise HTTPException(status_code=400, detail="File size exceeds the 100MB limit.")
     if file_size == 0:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
         
