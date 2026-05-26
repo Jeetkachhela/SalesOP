@@ -11,6 +11,22 @@ from app.core.config import settings
 # Initialize logger
 logger = logging.getLogger(__name__)
 
+# Automatically initialize and synchronize database tables on application boot
+try:
+    from app.core.database import engine, Base
+    # Import all models to ensure they are registered on Base.metadata
+    from app.models.user import User
+    from app.models.upload import Upload
+    from app.models.analysis import DataQualityReport, StatisticalFinding, AIInsightReport
+    from app.models.session import AnalysisSession
+    from app.models.interactions import UserAnnotation, ChatHistory
+    
+    logger.info("Automatically checking and synchronizing database schema...")
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database schema initialized successfully.")
+except Exception as db_init_err:
+    logger.error(f"Critical error during database schema auto-initialization: {str(db_init_err)}")
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="Operational Intelligence & Data Reliability Platform API",
