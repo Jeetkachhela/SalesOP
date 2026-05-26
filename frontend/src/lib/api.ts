@@ -38,5 +38,10 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
     throw new Error(errorData?.detail || "An unexpected error occurred.");
   }
   
-  return response.json();
+  if (response.status === 204) {
+    return null;
+  }
+  
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
 }

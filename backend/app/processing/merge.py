@@ -27,6 +27,13 @@ def merge_datasets(
         logger.info(f"Auto-detected merge keys: {left_on}")
         
     try:
+        # Coerce join keys to string to prevent type-mismatch ValueError join failures
+        if left_on in df1.columns and right_on in df2.columns:
+            df1 = df1.copy()
+            df2 = df2.copy()
+            df1[left_on] = df1[left_on].astype(str).str.strip()
+            df2[right_on] = df2[right_on].astype(str).str.strip()
+            
         merged_df = pd.merge(
             df1, 
             df2, 

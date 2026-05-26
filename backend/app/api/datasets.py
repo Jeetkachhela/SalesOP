@@ -9,6 +9,9 @@ from app.api.deps import get_current_user
 from app.processing.merge import merge_datasets
 from app.analytics.quality import evaluate_data_quality
 from app.analytics.statistics import evaluate_statistics_and_anomalies
+from app.analytics.correlation import evaluate_correlations
+from app.analytics.distribution import evaluate_distributions
+from app.analytics.trends import evaluate_trends
 from app.ai.interpreter import generate_ai_insights
 import logging
 import os
@@ -55,10 +58,17 @@ def process_merge_background(merged_dataset_id: str, df: pd.DataFrame, db: Sessi
             upload_entry.status = "STATISTICAL_ANALYSIS"
         db.commit()
         stat_findings = evaluate_statistics_and_anomalies(df)
+        correlation_findings = evaluate_correlations(df)
+        distribution_findings = evaluate_distributions(df)
+        trend_findings = evaluate_trends(df)
+        
         stat_report = StatisticalFinding(
             upload_id=merged_ds.id, 
             anomalies=stat_findings["anomalies"], 
-            metrics=stat_findings["metrics"]
+            metrics=stat_findings["metrics"],
+            correlations=correlation_findings,
+            distributions=distribution_findings,
+            trends=trend_findings
         )
         db.add(stat_report)
         db.commit()
