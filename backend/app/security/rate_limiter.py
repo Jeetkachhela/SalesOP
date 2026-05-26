@@ -53,7 +53,12 @@ class DualRateLimiterMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         path = request.url.path
+        method = request.method.upper()
         
+        # Skip rate-limiting for preflight OPTIONS and HEAD requests
+        if method in ("OPTIONS", "HEAD"):
+            return await call_next(request)
+            
         # Skip rate-limiting for health and root endpoints
         if path == "/" or path == "/api/v1/health" or path == "/health":
             return await call_next(request)
@@ -93,13 +98,44 @@ class DualRateLimiterMiddleware(BaseHTTPMiddleware):
             
         if not is_allowed:
             logger.warning(f"Rate limit exceeded for client {client_ip} on path {path} (Bucket: {bucket_key})")
-            return JSONResponse(
+            
+            response = JSONResponse(
                 status_code=429,
                 content={
                     "detail": "Too many requests. Please slow down and try again.",
                     "retry_after": window
                 }
             )
+            
+            # Manually append CORS headers to avoid masking 429 under CORS preflight errors
+            origin = request.headers.get("origin")
+            if origin:
+                origin_lower = origin.lower()
+                is_valid = False
+                if origin in [
+                    "http://localhost:3000",
+                    "http://127.0.0.1:3000",
+                    "https://sales-op-five.vercel.app",
+                    "https://sales-op-68o2.vercel.app",
+                    "https://sales-op-6802.vercel.app",
+                    "https://sales-op-6802-3uuzfff4u-jeetkachhelas-projects.vercel.app"
+                ]:
+                    is_valid = True
+                elif (
+                    origin_lower.endswith("-jeetkachhelas-projects.vercel.app") 
+                    or (origin_lower.endswith(".vercel.app") and ("sales-op" in origin_lower or "salesop" in origin_lower))
+                    or "sales-op-6802" in origin_lower 
+                    or "sales-op-68o2" in origin_lower
+                ):
+                    is_valid = True
+                    
+                if is_valid:
+                    response.headers["Access-Control-Allow-Origin"] = origin
+                    response.headers["Access-Control-Allow-Credentials"] = "true"
+                    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, X-Request-ID, accept, origin"
+                    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, HEAD"
+                    
+            return response
             
         return await call_next(request)
 

@@ -117,13 +117,37 @@ async def global_exception_handler(request: Request, exc: Exception):
     request_id = getattr(request.state, "request_id", "N/A")
     logger.error(f"Unhandled exception [ID: {request_id}]: {str(exc)}\n{traceback.format_exc()}")
     status_code = exc.status_code if hasattr(exc, "status_code") else 500
-    return JSONResponse(
+    
+    response = JSONResponse(
         status_code=status_code,
         content={
             "detail": getattr(exc, "detail", "An unexpected server error occurred. Please contact system support."),
             "request_id": request_id
         }
     )
+    
+    # Manually append CORS headers to avoid masking exceptions under CORS errors
+    origin = request.headers.get("origin")
+    if origin:
+        origin_lower = origin.lower()
+        is_valid = False
+        if origin in allowed_origins:
+            is_valid = True
+        elif (
+            origin_lower.endswith("-jeetkachhelas-projects.vercel.app") 
+            or (origin_lower.endswith(".vercel.app") and ("sales-op" in origin_lower or "salesop" in origin_lower))
+            or "sales-op-6802" in origin_lower 
+            or "sales-op-68o2" in origin_lower
+        ):
+            is_valid = True
+            
+        if is_valid:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, X-Request-ID, accept, origin"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, HEAD"
+            
+    return response
 
 from app.api.auth import router as auth_router
 from app.api.uploads import router as uploads_router
