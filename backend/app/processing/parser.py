@@ -22,7 +22,7 @@ def parse_and_sanitize_csv(file_bytes: bytes, chunk_size: int = 10000) -> pd.Dat
             for col in string_cols:
                 s = chunk[col]
                 # Identify actual string values in a fast vectorized check
-                is_str_mask = s.apply(lambda x: isinstance(x, str))
+                is_str_mask = s.map(type) == str
                 if is_str_mask.any():
                     # Strip strings and detect formula injection starting characters
                     strs = s[is_str_mask].str.strip()

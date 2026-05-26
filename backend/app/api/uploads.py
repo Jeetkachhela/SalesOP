@@ -17,10 +17,32 @@ import logging
 import time
 import os
 import io
+import gzip
+import base64
 import pandas as pd
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+def compress_string(s: str) -> str:
+    """Compresses a string to a base64 gzipped string to reduce Neon Postgres payload write sizes by 90%"""
+    try:
+        compressed = gzip.compress(s.encode('utf-8'))
+        return "gz:" + base64.b64encode(compressed).decode('utf-8')
+    except Exception as e:
+        logger.error(f"Failed to compress file content payload: {str(e)}")
+        return s
+
+def decompress_string(s: str) -> str:
+    """Decompresses a base64 gzipped string if it starts with 'gz:', otherwise returns original"""
+    if s and s.startswith("gz:"):
+        try:
+            compressed_bytes = base64.b64decode(s[3:].encode('utf-8'))
+            return gzip.decompress(compressed_bytes).decode('utf-8')
+        except Exception as e:
+            logger.error(f"Failed to decompress file content payload: {str(e)}")
+            return s
+    return s
 
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB limit for MVP
 ALLOWED_MIME_TYPES = ["text/csv", "application/vnd.ms-excel"]
@@ -43,7 +65,8 @@ def process_upload_background(upload_id: str, file_bytes: bytes, db: Session):
             
         # Save file content to database for stateless persistence (Render Free Tier)
         try:
-            upload.file_content = file_bytes.decode('utf-8', errors='ignore')
+            raw_content = file_bytes.decode('utf-8', errors='ignore')
+            upload.file_content = compress_string(raw_content)
             db.commit()
         except Exception as db_err:
             logger.error(f"Failed to save file content to database for upload {upload_id}: {str(db_err)}")
@@ -210,7 +233,8 @@ def regenerate_dataset(
             logger.error(f"Failed to read file from disk for regenerate: {str(e)}")
             
     if not file_bytes and upload.file_content:
-        file_bytes = upload.file_content.encode('utf-8')
+        decompressed_content = decompress_string(upload.file_content)
+        file_bytes = decompressed_content.encode('utf-8')
         # Re-save to disk for any other processes expecting it
         try:
             os.makedirs("data/uploads", exist_ok=True)

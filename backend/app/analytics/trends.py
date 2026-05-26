@@ -52,7 +52,7 @@ def evaluate_trends(df: pd.DataFrame) -> dict:
     if pd.api.types.is_datetime64_any_dtype(df[primary_dt_col]):
         df_temp[primary_dt_col] = df[primary_dt_col]
     else:
-        df_temp[primary_dt_col] = pd.to_datetime(df[primary_dt_col], errors='coerce', cache=True)
+        df_temp[primary_dt_col] = pd.to_datetime(df[primary_dt_col], errors='coerce', cache=True, infer_datetime_format=True)
     
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     if not numeric_cols:
