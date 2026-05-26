@@ -20,7 +20,7 @@ def evaluate_data_quality(df: pd.DataFrame) -> dict:
     total_cells = findings["total_rows"] * findings["total_columns"]
     total_missing = 0
     consistent_columns_count = 0
-    anomaly_rows_set = set()
+    anomaly_mask = pd.Series(False, index=df.index)
     
     for col in df.columns:
         col_series = df[col]
@@ -34,15 +34,12 @@ def evaluate_data_quality(df: pd.DataFrame) -> dict:
         if pd.api.types.is_numeric_dtype(col_series):
             inferred_type = "numeric"
             
-            # Fast Z-score anomaly detection to flag rows for Trust Score
-            non_nulls = col_series.dropna()
-            if len(non_nulls) > 0:
-                mean = non_nulls.mean()
-                std = non_nulls.std()
-                if pd.notnull(std) and std > 0:
-                    z_scores = np.abs((non_nulls - mean) / std)
-                    anomalies = non_nulls[z_scores > 3]
-                    anomaly_rows_set.update(anomalies.index.tolist())
+            # Fast vectorized Z-score anomaly detection to flag rows for Trust Score
+            mean = col_series.mean()
+            std = col_series.std()
+            if pd.notnull(std) and std > 0:
+                col_anomalies = np.abs((col_series - mean) / std) > 3
+                anomaly_mask |= col_anomalies
                     
         elif pd.api.types.is_datetime64_any_dtype(col_series):
             inferred_type = "datetime"
@@ -79,7 +76,7 @@ def evaluate_data_quality(df: pd.DataFrame) -> dict:
     completeness = 1.0 - (total_missing / total_cells) if total_cells > 0 else 1.0
     consistency = consistent_columns_count / findings["total_columns"] if findings["total_columns"] > 0 else 1.0
     
-    anomaly_rows_count = len(anomaly_rows_set)
+    anomaly_rows_count = int(anomaly_mask.sum())
     anomaly_health = 1.0 - (anomaly_rows_count / findings["total_rows"]) if findings["total_rows"] > 0 else 1.0
     
     # Trust Score™ = weighted average: 40% Completeness, 30% Consistency, 30% Anomaly Health

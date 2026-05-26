@@ -17,11 +17,18 @@ def merge_datasets(
     """
     logger.info(f"Attempting to merge datasets. df1 shape: {df1.shape}, df2 shape: {df2.shape}")
     
+    # Edge Case: Handle empty DataFrames safely
+    if df1.empty or df2.empty:
+        logger.warning("One or both DataFrames are empty. Returning empty merged DataFrame.")
+        # Return empty dataframe with merged columns schema
+        empty_cols = list(set(df1.columns).union(set(df2.columns)))
+        return pd.DataFrame(columns=empty_cols)
+        
     if not left_on or not right_on:
         common_cols = list(set(df1.columns).intersection(set(df2.columns)))
         if not common_cols:
             raise ValueError("No common columns found for automatic merge, and no join keys provided.")
-        # Just use the first common column as a simple auto-merge strategy for MVP
+        # Just use the first common column as a simple auto-merge strategy
         left_on = common_cols[0]
         right_on = common_cols[0]
         logger.info(f"Auto-detected merge keys: {left_on}")
@@ -33,18 +40,19 @@ def merge_datasets(
             type1 = df1[left_on].dtype
             type2 = df2[right_on].dtype
             
-            # If both are numeric (integers or floats), we can join directly without string coercion
             is_num1 = pd.api.types.is_numeric_dtype(type1)
             is_num2 = pd.api.types.is_numeric_dtype(type2)
             
-            if not (is_num1 and is_num2):
-                logger.info(f"Converting join keys to stripped strings due to type mismatch or non-numeric types ({type1} vs {type2})")
+            # Smart check: If they have the exact same dtype or are both numeric,
+            # they are compatible for native high-speed C-level joins without string casting.
+            if type1 == type2 or (is_num1 and is_num2):
+                logger.info(f"Join keys are highly compatible ({type1} and {type2}). Direct join enabled.")
+            else:
+                logger.info(f"Converting join keys to stripped strings due to type difference ({type1} vs {type2})")
                 df1 = df1.copy(deep=False)
                 df2 = df2.copy(deep=False)
                 df1[left_on] = df1[left_on].astype(str).str.strip()
                 df2[right_on] = df2[right_on].astype(str).str.strip()
-            else:
-                logger.info(f"Numeric join keys detected ({type1} and {type2}). Direct join enabled.")
             
         merged_df = pd.merge(
             df1, 
