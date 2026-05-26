@@ -50,14 +50,17 @@ def evaluate_data_quality(df: pd.DataFrame) -> dict:
             inferred_type = "boolean"
             
         # Determine consistency (mixed types check)
-        non_null_series = col_series.dropna()
-        if len(non_null_series) == 0:
-            # Empty column is technically not mixed, but it's not very consistent/useful
-            is_consistent = False
+        # Non-object dtypes (numeric, datetime, bool) are guaranteed to be consistent
+        if str(col_series.dtype) != "object":
+            is_consistent = True
         else:
-            # Check number of unique types in the non-null elements
-            unique_types = non_null_series.apply(type).nunique()
-            is_consistent = (unique_types <= 1)
+            non_null_series = col_series.dropna()
+            if len(non_null_series) == 0:
+                is_consistent = False
+            else:
+                first_type = type(non_null_series.iloc[0])
+                # Highly optimized generator expression with early exit
+                is_consistent = all(type(x) is first_type for x in non_null_series)
             
         if is_consistent:
             consistent_columns_count += 1
